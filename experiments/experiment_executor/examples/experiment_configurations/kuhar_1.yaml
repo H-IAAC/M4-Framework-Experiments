@@ -8,13 +8,13 @@ estimators:
     kwargs:
         n_neighbors: 5
     name: KNN-5
-    num_runs: 10
+    num_runs: 1
 -   algorithm: SVM
     kwargs:
         C: 1.0
         kernel: rbf
     name: SVM-rbf-C1.0
-    num_runs: 10
+    num_runs: 1
 extra:
     in_use_features:
     - accel-x
@@ -23,15 +23,21 @@ extra:
     - gyro-x
     - gyro-y
     - gyro-z
-    reduce_on: sensor
+    reduce_on: all
     scale_on: train
-reducer: null
-reducer_dataset: null
+reducer:
+    algorithm: umap
+    kwargs:
+        n_components: 2
+    name: umap-2
+reducer_dataset:
+- kuhar.standartized_balanced[train]
+- kuhar.standartized_balanced[validation]
 scaler: null
 test_dataset:
-- realworld.standartized_intra_balanced[test]
+- kuhar.standartized_balanced[test]
 train_dataset:
-- realworld.standartized_intra_balanced[train]
-- realworld.standartized_intra_balanced[validation]
+- kuhar.standartized_balanced[train]
+- kuhar.standartized_balanced[validation]
 transforms: null
 version: '1.0'

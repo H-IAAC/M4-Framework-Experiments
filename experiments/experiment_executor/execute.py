@@ -1,25 +1,17 @@
-# Copyright © 2023 H.IAAC, UNICAMP
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy 
-# of this software and associated documentation files (the “Software”), to 
-# deal in the Software without restriction, including without limitation the 
-# rights to use, copy, modify, merge, publish, distribute, sublicense, and/or 
-# sell copies of the Software, and to permit persons to whom the Software is 
-# furnished to do so, subject to the following conditions:
-# The above copyright notice and this permission notice shall be included in 
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL 
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
-# DEALINGS IN THE SOFTWARE. 
+# Remove deprecated warnings
+from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
+from sklearn.exceptions import UndefinedMetricWarning
+import warnings
+
+warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
+warnings.simplefilter("ignore", category=NumbaDeprecationWarning)
+warnings.simplefilter("ignore", category=NumbaPendingDeprecationWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 # Python imports
 import argparse
+from collections import defaultdict
 import logging
 import sys
 import time
@@ -44,8 +36,9 @@ from librep.datasets.multimodal import (
     TransformMultiModalDataset,
     WindowedTransform,
 )
+from librep.base.evaluators import SupervisedEvaluator
 from librep.metrics.report import ClassificationReport
-from librep.utils.workflow import MultiRunWorkflow, SimpleTrainEvalWorkflow
+from librep.utils.workflow import MultiRunWorkflow, SimpleTrainEvalWorkflowMultiModal
 from ray.util.multiprocessing import Pool
 from utils import catchtime, load_yaml, get_sys_info, multimodal_multi_merge
 
@@ -194,16 +187,16 @@ def load_datasets(
 
 # Non-parametric transform
 def do_transform(
-    datasets: List[MultiModalDataset],
+    datasets: Dict[str, MultiModalDataset],
     transform_configs: List[TransformConfig],
     keep_suffixes: bool = True,
-) -> List[MultiModalDataset]:
-    """Utilitary function to apply a list of transforms to a list of datasets
+) -> Dict[str, MultiModalDataset]:
+    """Utilitary function to apply a list of transforms to datasets
 
     Parameters
     ----------
-    datasets : List[MultiModalDataset]
-        List of the datasets to transform.
+    datasets : Dict[str, MultiModalDataset]
+        Dictonary with dataset name and the respective dataset.
     transform_configs : List[TransformConfig]
         List of the transforms to apply. Each transform it will be instantiated
         based on the TransformConfig object and each one will be applied to the
@@ -213,12 +206,12 @@ def do_transform(
 
     Returns
     -------
-    List[MultiModalDataset]
-        The transformed datasets.
+    Dict[str, MultiModalDataset]
+        Dictonary with dataset name and the respective transformed dataset.
     """
-    new_datasets = []
+    new_datasets = dict()
     # Loop over the datasets
-    for dset in datasets:
+    for dset_name, dset in datasets.items():
         transforms = []
         new_names = []
 
@@ -248,7 +241,7 @@ def do_transform(
             transforms.append(the_transform)
             if keep_suffixes:
                 new_names.append(transform_config.name)
-        
+
         new_name_prefix = ".".join(new_names)
         if new_name_prefix:
             new_name_prefix += "."
@@ -260,7 +253,7 @@ def do_transform(
         # Apply the transforms to the dataset
         dset = transformer(dset)
         # Append the transformed dataset to the list of new datasets
-        new_datasets.append(dset)
+        new_datasets[dset_name] = dset
 
     # Return the list of transformed datasets
     return new_datasets
@@ -268,23 +261,30 @@ def do_transform(
 
 # Parametric transform
 def do_reduce(
-    datasets: List[MultiModalDataset],
+    datasets: Dict[str, MultiModalDataset],
     reducer_config: ReducerConfig,
+    reducer_dataset_name="reducer_dataset",
+    reducer_validation_dataset_name="reducer_validation_dataset",
     reduce_on: str = "all",
     suffix: str = "reduced",
-) -> List[MultiModalDataset]:
+    use_y: bool = False,
+    apply_only_in: List[str] = None,
+    sensor_names: List[str] = ("accel", "gyro"),
+) -> Dict[str, MultiModalDataset]:
     """Utilitary function to perform dimensionality reduce to a list of
     datasets. The first dataset will be used to fit the reducer. And the
     reducer will be applied to the remaining datasets.
 
     Parameters
     ----------
-    datasets : List[MultiModalDataset]
-        List of the datasets to perform the dimensionality reduction.
-        The first dataset will be used to fit the reducer. And the
-        reducer will be applied to the remaining datasets.
+    datasets : Dict[str, MultiModalDataset]
+        Dictonary with dataset name and the respective dataset.
     reducer_config : ReducerConfig
         The reducer configuration, used to instantiate the reducer.
+    reducer_dataset_name : str, optional
+        The name of the dataset to use to fit the reducer, by default "reducer_dataset"
+    reducer_validation_dataset_name : str, optional
+        The name of the dataset to use to fit the reducer, by default "reducer_validation_dataset"
     reduce_on : str, optional
         How reduce will perform, by default "all".
         It can have the following values:
@@ -295,12 +295,19 @@ def do_reduce(
             and then, the datasets will be concatenated.
     suffix : str, optional
         The new suffix to be appended to the window name, by default "reduced."
+    use_y: bool, optional
+        If True, the reducer will be trained with X and y (supervised). If False, the reducer
+        will be trained with X only. By default False.
+    apply_only_in: List[str], optional
+        List of datasets to apply the reducer. If None, the reducer will be applied to all
+        excluding the reducer_dataset_name and reducer_validation_dataset_name. By default None.
+    sensor_names : List[str], optional
+        The sensor names, by default ("accel", "gyro")
 
     Returns
     -------
-    List[MultiModalDataset]
-        The list of datasets with the dimensionality reduction applied.
-        **Note**: the first will not be transformed (and not returned)
+    Dict[str, MultiModalDataset]
+        Dictonary with dataset name and the respective transformed dataset.
     Raises
     ------
     ValueError
@@ -310,19 +317,62 @@ def do_reduce(
     NotImplementedError
         If the reduce_on is not implemented yet.
     """
-    # Sanity check
-    if len(datasets) < 2:
-        raise ValueError("At least two datasets are required to reduce")
+    #  ----- Sanity check -----
 
-    sensor_names = ["accel", "gyro"]
+    # The reducer_dataset_name must be in the datasets
+    if reducer_dataset_name not in datasets:
+        raise ValueError(
+            f"Dataset '{reducer_dataset_name}' not found. "
+            + f"Maybe you forgot to load it in your configuration file? "
+            + f"Check if any 'reducer_dataset' is defined in your configuration file."
+        )
+
+    if apply_only_in is not None:
+        for dset_name in apply_only_in:
+            if dset_name not in datasets:
+                raise ValueError(
+                    f"Dataset '{dset_name}' not found. "
+                    + f"Maybe you forgot to load it in your configuration file?"
+                )
+    else:
+        apply_only_in = list(datasets.keys())
+
+    # Remove reducer_dataset_name and reducer_validation_dataset_name from apply_only_in
+    apply_only_in = [
+        dset_name
+        for dset_name in apply_only_in
+        if dset_name not in (reducer_dataset_name, reducer_validation_dataset_name)
+    ]
 
     # Get the reducer kwargs
     kwargs = reducer_config.kwargs or {}
+
+    # Output datasets
+    new_datasets = {k: v for k, v in datasets.items()}
+
+    # If reduce on is "all", fit the reducer on the first dataset and
+    # apply the reducer to the remaining datasets
     if reduce_on == "all":
         # Get the reducer class and instantiate it using the kwargs
         reducer = reducers_cls[reducer_config.algorithm](**kwargs)
-        # Fit the reducer on the first dataset
-        reducer.fit(datasets[0][:][0])
+        # Fit the reducer on the reducer_dataset_name
+        fit_dsets = {
+            "X": datasets[reducer_dataset_name][:][0],
+        }
+        # If use_y is True, train the reducer with X and y
+        if use_y:
+            fit_dsets["y"] = datasets[reducer_dataset_name][:][1]
+        # If the reducer_validation_dataset_name is in the datasets, use it
+        if reducer_validation_dataset_name in datasets:
+            fit_dsets["X_val"] = datasets[reducer_validation_dataset_name][:][0]
+        # If the reducer_validation_dataset_name is in the datasets and use_y is True,
+        # use it
+        if reducer_validation_dataset_name in datasets and use_y:
+            fit_dsets["y_val"] = datasets[reducer_validation_dataset_name][:][1]
+
+        # Fit the reducer the datasets specified in fit_dsets
+        reducer.fit(**fit_dsets)
+
         # Instantiate the WindowedTransform with fit_on=None and
         # transform_on="all", i.e. the transform will be applied to
         # whole dataset.
@@ -337,28 +387,49 @@ def do_reduce(
             transforms=[transform], new_window_name_prefix=suffix
         )
         # Apply the transform to the remaining datasets
-        datasets = [transformer(dataset) for dataset in datasets[1:]]
-        return datasets
+        new_datasets.update(
+            {dset_name: transformer(datasets[dset_name]) for dset_name in apply_only_in}
+        )
 
+    # If reduce on is "sensor" or "axis", fit the reducer on each sensor
+    # and if reduce on is "axis", fit the reducer on each axis of each sensor
     elif reduce_on == "sensor" or reduce_on == "axis":
         if reduce_on == "axis":
-            window_names = datasets[0].window_names
+            window_names = datasets["reducer_dataset"].window_names
         else:
             window_names = [
-                [w for w in datasets[0].window_names if s in w] for s in sensor_names
+                [w for w in datasets["reducer_dataset"].window_names if s in w]
+                for s in sensor_names
             ]
             window_names = [w for w in window_names if w]
 
-        window_datasets = []
+        window_datasets = defaultdict(list)
 
-
-        # Loop over the windows
+        # Loop over the windows (accel, gyro, for "sensor"; (accel-x, accel-y, accel-z, gyro-x, gyro-y, gyro-z, for "axis")
         for i, wname in enumerate(window_names):
             # Get the reducer class and instantiate it using the kwargs
             reducer = reducers_cls[reducer_config.algorithm](**kwargs)
             # Fit the reducer on the first dataset
-            reducer_window = datasets[0].windows(wname)
-            reducer.fit(reducer_window[:][0])
+            reducer_window = datasets["reducer_dataset"].windows(wname)
+            # Fit the reducer on the reducer_dataset_name
+            fit_dsets = {
+                "X": datasets[reducer_dataset_name].windows(wname)[:][0],
+            }
+            # If use_y is True, train the reducer with X and y
+            if use_y:
+                fit_dsets["y"] = datasets[reducer_dataset_name].windows(wname)[:][1]
+            # If the reducer_validation_dataset_name is in the datasets, use it
+            if reducer_validation_dataset_name in datasets:
+                fit_dsets["X_val"] = datasets[reducer_validation_dataset_name].windows(
+                    wname
+                )[:][0]
+            # If the reducer_validation_dataset_name is in the datasets and use_y is True,
+            # use it
+            if reducer_validation_dataset_name in datasets and use_y:
+                fit_dsets["y_val"] = datasets[reducer_validation_dataset_name].windows(
+                    wname
+                )[:][1]
+
             # Instantiate the WindowedTransform with fit_on=None and
             # transform_on="all", i.e. the transform will be applied to
             # whole dataset.
@@ -372,36 +443,45 @@ def do_reduce(
             transformer = TransformMultiModalDataset(
                 transforms=[transform], new_window_name_prefix=f"{suffix}-{i}"
             )
-            # Apply the transform to the remaining datasets
-            _window_datasets = []
-            for dataset in datasets[1:]:
-                dset_window = dataset.windows(wname)
+
+            # Apply the transform on the same window of each dataset
+            # in apply_only_in
+            for dataset_name in apply_only_in:
+                dset_window = datasets[dataset_name].windows(wname)
                 dset_window = transformer(dset_window)
-                _window_datasets.append(dset_window)
-            window_datasets.append(_window_datasets)
+                window_datasets[dataset_name].append(dset_window)
 
         # Merge dataset windows
-        datasets = [
-            multimodal_multi_merge([dataset[i] for dataset in window_datasets])
-            for i in range(len(window_datasets[0]))
-        ]
-        return datasets
-            
+        new_datasets.update(
+            {
+                dset_name: multimodal_multi_merge(window_datasets[dset_name])
+                for dset_name in apply_only_in
+            }
+        )
 
-        raise NotImplementedError(f"Reduce_on: {reduce_on} not implemented yet")
     else:
         raise ValueError(
             "Invalid reduce_on value. Must be one of: 'all', 'axis', 'sensor"
         )
 
+    # if reducer_dataset_name in datasets:
+    #     new_datasets[reducer_dataset_name] = datasets[reducer_dataset_name]
+    # if reducer_validation_dataset_name in datasets:
+    #     new_datasets[reducer_validation_dataset_name] = datasets[
+    #         reducer_validation_dataset_name
+    #     ]
+    return new_datasets
+
 
 # Scaling transform
 def do_scaling(
-    datasets: List[MultiModalDataset],
+    datasets: Dict[str, MultiModalDataset],
     scaler_config: ScalerConfig,
     scale_on: str = "self",
     suffix: str = "scaled.",
-) -> List[MultiModalDataset]:
+    apply_only_in: List[str] = ("train_dataset", "validation_dataset", "test_dataset"),
+    train_dataset_name="train_dataset",
+) -> Dict[str, MultiModalDataset]:
     """Utilitary function to perform scaling to a list of datasets.
     If scale_on is "self", the scaling will be fit and transformed applied
     to each dataset. If scale_on is "train", the scaling will be fit to the
@@ -423,11 +503,16 @@ def do_scaling(
             scaling will be applied to all the datasets.
     suffix : str, optional
         The new suffix to be appended to the window name, by default "scaled."
+    apply_only_in: List[str], optional
+        List of datasets to apply the scaler.
+    train_dataset_name: str, optional
+        If scale_on is "train", this parameter is used to specify the name of
+        the dataset to use to fit the scaler.
 
     Returns
     -------
-    List[MultiModalDataset]
-        The list of datasets with the scaling applied.
+    Dict[str, MultiModalDataset]
+        Dictonary with dataset name and the respective scaled dataset.
 
     Raises
     ------
@@ -437,9 +522,10 @@ def do_scaling(
     #
     kwargs = scaler_config.kwargs or {}
     if scale_on == "self":
-        new_datasets = []
         # Loop over the datasets
-        for dataset in datasets:
+        for dataset_name in apply_only_in:
+            # Get the dataset
+            dataset = datasets[dataset_name]
             # Get the scaler class and instantiate it using the kwargs
             transform = scaler_cls[scaler_config.algorithm](**kwargs)
             # Fit the scaler usinf the whole dataset and (i.e., fit_on="all")
@@ -457,16 +543,17 @@ def do_scaling(
             # Apply the transform to the dataset
             dataset = transformer(dataset)
             # Append the dataset to the list of new datasets
-            new_datasets.append(dataset)
-        return new_datasets
+            datasets[dataset_name] = dataset
+
+        return datasets
 
     elif scale_on == "train":
-        new_datasets = []
         # Get the scaler class and instantiate it using the kwargs
         transform = scaler_cls[scaler_config.algorithm](**kwargs)
         # Fit the scaler on the first dataset
-        transform.fit(datasets[0][:][0])
-        for dataset in datasets:
+        transform.fit(datasets[train_dataset_name][:][0])
+        for dataset_name in apply_only_in:
+            dataset = datasets[dataset_name]
             # Instantiate the WindowedTransform with fit_on=None and
             # transform_on="all", i.e. the transform will be applied to
             # whole dataset.
@@ -482,10 +569,62 @@ def do_scaling(
             # Apply the transform to the dataset
             dataset = transformer(dataset)
             # Append the dataset to the list of new datasets
-            new_datasets.append(dataset)
-        return new_datasets
+            datasets[dataset_name] = dataset
+        return datasets
     else:
         raise ValueError(f"scale_on: {scale_on} is not valid")
+
+
+def do_classification(
+    datasets: Dict[str, MultiModalDataset],
+    estimator_config: EstimatorConfig,
+    reporter: SupervisedEvaluator,
+    train_dataset_name="train_dataset",
+    validation_dataset_name="validation_dataset",
+    test_dataset_name="test_dataset",
+) -> dict:
+    """Utilitary function to perform classification to a list of datasets.
+
+    Parameters
+    ----------
+    datasets : Dict[str, MultiModalDataset]
+        Dictonary with dataset name and the respective dataset.
+    estimator_config : EstimatorConfig
+        The estimator configuration, used to instantiate the estimator.
+    reporter : SupervisedEvaluator
+        The reporter object, used to evaluate the model.
+
+    Returns
+    -------
+    dict
+        Dictionary with the results of the experiment.
+    """
+    results = dict()
+    
+    # Get the estimator class and instantiate it using the kwargs
+    estimator = estimator_cls[estimator_config.algorithm](
+        **(estimator_config.kwargs or {})
+    )
+    # Instantiate the SimpleTrainEvalWorkflowMultiModal
+    workflow = SimpleTrainEvalWorkflowMultiModal(
+        estimator=estimator,
+        do_fit=True,
+        evaluator=reporter,
+    )
+    # Instantiate the MultiRunWorkflow
+    runner = MultiRunWorkflow(workflow=workflow, num_runs=estimator_config.num_runs)
+    # Run the workflow
+    with catchtime() as classification_time:
+        results["results"] = runner(
+            datasets[train_dataset_name],
+            datasets[validation_dataset_name] if validation_dataset_name in datasets else None,
+            datasets[test_dataset_name],
+        )
+        
+    results["classification_time"] = float(classification_time)
+    results["estimator"] = asdict(estimator_config)
+
+    return results
 
 
 # Function that runs the experiment
@@ -544,66 +683,81 @@ def run_experiment(
     additional_info = dict()
     start_time = time.time()
 
+    # Dictionary to store the datasets
+    datasets = dict()
+
     # ----------- 1. Load the datasets -----------
     with catchtime() as loading_time:
-        # Load train dataset
-        train_dset = load_datasets(
+        # Load train dataset (mandatory)
+        datasets["train_dataset"] = load_datasets(
             dataset_locations=dataset_locations,
             datasets_to_load=config_to_execute.train_dataset,
             features=config_to_execute.extra.in_use_features,
         )
-        # Load test dataset
-        test_dset = load_datasets(
+        # Load validation dataset (optional)
+        if config_to_execute.validation_dataset:
+            datasets["validation_dataset"] = load_datasets(
+                dataset_locations=dataset_locations,
+                datasets_to_load=config_to_execute.validation_dataset,
+                features=config_to_execute.extra.in_use_features,
+            )
+
+        # Load test dataset (mandatory)
+        datasets["test_dataset"] = load_datasets(
             dataset_locations=dataset_locations,
             datasets_to_load=config_to_execute.test_dataset,
             features=config_to_execute.extra.in_use_features,
         )
-        # If there is any reducer dataset speficied, load reducer
+
+        # Load reducer dataset (optional)
         if config_to_execute.reducer_dataset:
-            reducer_dset = load_datasets(
+            datasets["reducer_dataset"] = load_datasets(
                 dataset_locations=dataset_locations,
                 datasets_to_load=config_to_execute.reducer_dataset,
                 features=config_to_execute.extra.in_use_features,
             )
-        else:
-            reducer_dset = None
+
+        if config_to_execute.reducer_validation_dataset:
+            datasets["reducer_validation_dataset"] = load_datasets(
+                dataset_locations=dataset_locations,
+                datasets_to_load=config_to_execute.reducer_validation_dataset,
+                features=config_to_execute.extra.in_use_features,
+            )
 
     # Add some meta information
     additional_info["load_time"] = float(loading_time)
-    additional_info["train_size"] = len(train_dset)
-    additional_info["test_size"] = len(test_dset)
-    additional_info["reduce_size"] = len(reducer_dset) if reducer_dset else 0
+    additional_info["train_size"] = len(datasets["train_dataset"])
+    additional_info["validation_size"] = (
+        len(datasets["validation_dataset"]) if "validation_dataset" in datasets else 0
+    )
+    additional_info["test_size"] = len(datasets["test_dataset"])
+    additional_info["reduce_size"] = (
+        len(datasets["reducer_dataset"]) if "reducer_dataset" in datasets else 0
+    )
 
     # ----------- 2. Do the non-parametric transform on train, test and reducer datasets ------------
 
     with catchtime() as transform_time:
-        # Is there any transform to do?
+        # Is there any transform to do to the datasets?
         if config_to_execute.transforms is not None:
-            # If there is a reducer dataset, do the transform on all of them
-            if reducer_dset is not None:
-                train_dset, test_dset, reducer_dset = do_transform(
-                    datasets=[train_dset, test_dset, reducer_dset],
-                    transform_configs=config_to_execute.transforms,
-                    keep_suffixes=True,
-                )
-            # If there is no reducer dataset, do the transform only on train and test
-            else:
-                train_dset, test_dset = do_transform(
-                    datasets=[train_dset, test_dset],
-                    transform_configs=config_to_execute.transforms,
-                    keep_suffixes=True,
-                )
+            # Apply the transform
+            datasets = do_transform(
+                datasets=datasets,
+                transform_configs=config_to_execute.transforms,
+                keep_suffixes=True,
+            )
     additional_info["transform_time"] = float(transform_time)
 
     # ----------- 3. Do the parametric transform on train and test, using the reducer dataset to fit the transform ------------
 
     with catchtime() as reduce_time:
-        # Is there any reducer to do?
-        if config_to_execute.reducer is not None and reducer_dset is not None:
-            train_dset, test_dset = do_reduce(
-                datasets=[reducer_dset, train_dset, test_dset],
+        # Is there any reducer object and the reducer dataset is specified?
+        if config_to_execute.reducer is not None:
+            datasets = do_reduce(
+                datasets=datasets,
                 reducer_config=config_to_execute.reducer,
                 reduce_on=config_to_execute.extra.reduce_on,
+                use_y=config_to_execute.reducer.use_y,
             )
     additional_info["reduce_time"] = float(reduce_time)
 
@@ -612,8 +766,8 @@ def run_experiment(
     with catchtime() as scaling_time:
         # Is there any scaler to do?
         if config_to_execute.scaler is not None:
-            train_dset, test_dset = do_scaling(
-                datasets=[train_dset, test_dset],
+            datasets = do_scaling(
+                datasets=datasets,
                 scaler_config=config_to_execute.scaler,
                 scale_on=config_to_execute.extra.scale_on,
             )
@@ -629,50 +783,36 @@ def run_experiment(
         use_classification_report=True,
         use_confusion_matrix=True,
         plot_confusion_matrix=False,
-        #     normalize='true',
-        #     display_labels=labels,
     )
-
-    all_results = []
-
-    # Create Simple Workflow
-    for estimator_cfg in config_to_execute.estimators:
-        results = dict()
-
-        workflow = SimpleTrainEvalWorkflow(
-            estimator=estimator_cls[estimator_cfg.algorithm],
-            estimator_creation_kwags=estimator_cfg.kwargs or {},
-            do_not_instantiate=False,
-            do_fit=True,
-            evaluator=reporter,
+    
+    # Run all estimators
+    all_results = [
+        do_classification(
+            datasets=datasets,
+            estimator_config=estimator_cfg,
+            reporter=reporter,
         )
+        for estimator_cfg in config_to_execute.estimators
+    ]
 
-        # Create a multi execution workflow
-        runner = MultiRunWorkflow(workflow=workflow, num_runs=estimator_cfg.num_runs)
-        with catchtime() as classification_time:
-            results["results"] = runner(train_dset, test_dset)
-
-        results["classification_time"] = float(classification_time)
-        results["estimator"] = asdict(estimator_cfg)
-        all_results.append(results)
-
+    # Add some meta information
     end_time = time.time()
     additional_info["total_time"] = end_time - start_time
     additional_info["start_time"] = start_time
     additional_info["end_time"] = end_time
     additional_info["system"] = get_sys_info()
 
-    # ----------- 6. Save results ------------
     values = {
         "experiment": asdict(config_to_execute),
         "report": all_results,
         "additional": additional_info,
     }
 
+    # ----------- 6. Save results ------------
     with experiment_output_file.open("w") as f:
         yaml.dump(values, f, indent=4, sort_keys=True)
 
-    return results
+    return values
 
 
 def run_wrapper(args) -> dict:
@@ -768,7 +908,6 @@ def run_ray(
     ]
     ready, not_ready = ray.wait(futures, num_returns=len(futures))
 
-    
     # pool = Pool()
     # iterator = pool.imap(
     #     run_wrapper,
@@ -785,7 +924,7 @@ def run_ray(
 if __name__ == "__main__":
     # ray.init(address="192.168.15.97:6379")
     parser = argparse.ArgumentParser(
-        prog="Execute experiments in datasets",
+        # prog="Execute experiments in datasets",
         description="Runs experiments in a dataset with a set of configurations",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -933,11 +1072,12 @@ if __name__ == "__main__":
     with catchtime() as total_time:
         # Run single
         if not args.ray:
-            logging.warning("Running in single mode! (slow)")
+            logging.warning("Running in sequential mode! (may be slow)")
             results = run_single_thread(
                 args, dataset_locations, execution_config_files, output_path
             )
         else:
+            logging.warning("Running using ray")
             results = run_ray(
                 args, dataset_locations, execution_config_files, output_path
             )

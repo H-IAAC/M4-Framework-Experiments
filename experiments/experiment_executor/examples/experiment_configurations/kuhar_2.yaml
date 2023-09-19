@@ -8,13 +8,13 @@ estimators:
     kwargs:
         n_neighbors: 5
     name: KNN-5
-    num_runs: 10
+    num_runs: 1
 -   algorithm: SVM
     kwargs:
         C: 1.0
         kernel: rbf
     name: SVM-rbf-C1.0
-    num_runs: 10
+    num_runs: 1
 extra:
     in_use_features:
     - accel-x
@@ -31,13 +31,20 @@ reducer:
         n_components: 2
     name: umap-2
 reducer_dataset:
-- kuhar.raw_balanced[train]
-- kuhar.raw_balanced[validation]
+- kuhar.standartized_balanced[train]
+- kuhar.standartized_balanced[validation]
 scaler: null
 test_dataset:
-- kuhar.raw_balanced[test]
+- kuhar.standartized_balanced[test]
 train_dataset:
-- kuhar.raw_balanced[train]
-- kuhar.raw_balanced[validation]
-transforms: null
+- kuhar.standartized_balanced[train]
+- kuhar.standartized_balanced[validation]
+transforms: 
+-   kwargs:
+        centered: true
+    name: FFT-centered
+    transform: fft
+    windowed:
+        fit_on: null
+        transform_on: window
 version: '1.0'

@@ -1,6 +1,21 @@
 # Experiment executor
 
-This is an experiment executor that allows running different experiment configurations by using execution config files.
+This experiment executor is a Python script that allows the execution of several experiments in a sequential or parallel way. It uses configuration files to define the experiments to be executed. The configuration files are written in [YAML](https://yaml.org/) and contain all information about the experiments (datasets, transforms, algorithms, etc). The executor script reads a folder with several experiment configuration files and executes each one sequentially or in parallel. 
+
+Each experiment is a pipeline with fixed steps. The configuration file controls the behavior of the pipeline. In a high-level, the pipeline steps are:
+
+1. Load the datasets (reducer, train and test datasets)
+2. Apply the non-parametric transforms (*e.g.*, FFT, etc)
+3. Apply the reducer algorithm on selected datasets (if defined)
+4. Apply the scaler algorithm (if defined)
+5. Train a classifier algorithm
+6. Predict the test dataset
+7. Save the results
+
+A visual representation of the pipeline can be seen in the figure below.
+
+![Experiment executor pipeline](figures/experiment_executor_pipeline.png)
+
 
 ## Installation
 
@@ -18,7 +33,6 @@ You may use the docker image to run the experiments. It can be built using the `
 
 ```
 docker build -t experiment-executor .
-
 ```
 
 ## Execution
@@ -120,17 +134,17 @@ reducer_dataset:                  # List of datasets to be used to fit the
                                   # If multiple datasets are defined, they
                                   # will be concatenated, before applying
                                   # the reducer algorithm.
-- motionsense.standartized_intra_balanced[train]
-- motionsense.standartized_intra_balanced[validation]
+- motionsense.standartized_inter_balanced[train]
+- motionsense.standartized_inter_balanced[validation]
 test_dataset:                     # List of datasets that will be used to
                                   # test the estimators. Follows the same
                                   # format as the reducer_dataset.
-- motionsense.standartized_intra_balanced[test]
+- motionsense.standartized_inter_balanced[test]
 train_dataset:                    # List of datasets that will be used to
                                   # train the estimators. Follows the same
                                   # format as the reducer_dataset.
-- motionsense.standartized_intra_balanced[train]
-- motionsense.standartized_intra_balanced[validation]
+- motionsense.standartized_inter_balanced[train]
+- motionsense.standartized_inter_balanced[validation]
 
 reducer:                          # Information about the reducer algorithm
                                   # (it can be null).
@@ -247,3 +261,12 @@ The experiments will be distributed among the workers. You can monitor the execu
 To stop the cluster, you must stop the head node and the workers. To stop the head node, you can use SIGINT (control+C) or kill the process. To stop the workers, you can use SIGINT (control+C) or kill the process.
 
 If the `--block` option was not used, you may use `ray stop` to stop the head node and the workers.
+
+
+## Testing
+
+To execute unit test, use:
+
+```bash
+pytest --cov=. --cov-branch --cov-report term-missing tests/
+```

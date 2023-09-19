@@ -1,0 +1,35 @@
+estimators:
+-   algorithm: DebugEstimator
+    kwargs:
+        n_estimators: 100
+    name: DebugEstimator-100
+    num_runs: 1
+extra:
+    in_use_features:
+    - accel-x
+    - accel-y
+    - accel-z
+    - gyro-x
+    - gyro-y
+    - gyro-z
+    reduce_on: all
+    scale_on: train
+reducer:
+    algorithm: DebugReducer
+    kwargs:
+        n_components: 2
+    name: DebugReducer
+    use_y: true
+reducer_dataset:
+- kuhar.standartized_balanced[train]
+reducer_validation_dataset:
+- motionsense.standartized_balanced[validation]
+scaler: null
+test_dataset:
+- kuhar.standartized_balanced[test]
+train_dataset:
+- kuhar.standartized_balanced[train]
+validation_dataset:
+- kuhar.standartized_balanced[validation]
+transforms: null
+version: '1.0'

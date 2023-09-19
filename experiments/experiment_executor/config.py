@@ -1,36 +1,18 @@
-# Copyright © 2023 Otávio Napoli <otavio.napoli@gmail.com>
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy 
-# of this software and associated documentation files (the “Software”), to 
-# deal in the Software without restriction, including without limitation the 
-# rights to use, copy, modify, merge, publish, distribute, sublicense, and/or 
-# sell copies of the Software, and to permit persons to whom the Software is 
-# furnished to do so, subject to the following conditions:
-# The above copyright notice and this permission notice shall be included in 
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL 
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
-# DEALINGS IN THE SOFTWARE. 
-
 # Python imports
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Union
 
 # Librep imports
 from librep.base.transform import Transform
+from librep.base.estimator import Estimator
+from librep.config.type_definitions import ArrayLike
 from librep.estimators import SVC, KNeighborsClassifier, RandomForestClassifier
 from librep.transforms.fft import FFT
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from transforms import Spectrogram
-
 # Third-party imports
 from umap import UMAP
+import numpy as np
 
 ################################################################################
 # Configuration classes
@@ -53,6 +35,7 @@ class ReducerConfig:
     name: str
     algorithm: str
     kwargs: Optional[dict]
+    use_y: Optional[bool] = False
 
 
 @dataclass
@@ -89,15 +72,18 @@ class ExtraConfig:
 class ExecutionConfig:
     # control variables
     version: str
-    # Datasets to use
+    # Datasets to use to reducer
     reducer_dataset: Optional[List[str]]
+    reducer_validation_dataset: Optional[List[str]] = None
+    # Datasets to use to train the estimators
     train_dataset: List[str]
+    validation_dataset: Optional[List[str]] = None
     test_dataset: List[str]
-    # Transforms
+    # List of transforms to apply
     transforms: Optional[List[TransformConfig]]
-    # Reducer
+    # The reducer to use
     reducer: Optional[ReducerConfig]
-    # Scaler
+    # The Scaler
     scaler: Optional[ScalerConfig]
     # Estimator
     estimators: List[EstimatorConfig]
@@ -118,6 +104,36 @@ class Identity(Transform):
         return X
 
 
+class WrapperEstimatorTransform(Estimator, Transform):
+    def __init__(self, obj: Union[Estimator, Transform], *args, **kwargs) -> None:
+        self._obj = obj
+
+    def predict(self, X):
+        return self._obj.predict(X)
+
+    def transform(self, X):
+        return self._obj.transform(X)
+
+
+class DebugTransformEstimator(Transform, Estimator):
+    def __init__(self, *args, **kwargs) -> None:
+        print(f"DebugTransformEstimator: args={args}, kwargs={kwargs}")
+
+    def fit(self, X, y=None, X_val=None, y_val=None, **fit_params):
+        print(
+            f"DebugTransformEstimator (fit). X: {len(X)}, y: {len(y) if y is not None else None}, X_val: {len(X_val) if X_val is not None else None}, y_val: {len(y_val) if y_val is not None else None}, fit_params: {fit_params}"
+        )
+        return self
+
+    def transform(self, X):
+        print(f"DebugTransformEstimator (transform): {X.shape}")
+        return X
+    
+    def predict(self, X):
+        print(f"DebugTransformEstimator (predict): {X.shape}")
+        return np.zeros(len(X))
+
+
 ################################################################################
 # Constants (Valid keys)
 ################################################################################
@@ -131,6 +147,8 @@ estimator_cls = {
     "SVM": SVC,
     "KNN": KNeighborsClassifier,
     "RandomForest": RandomForestClassifier,
+    "DebugEstimator": DebugTransformEstimator,
+    "WrapperEstimator": WrapperEstimatorTransform,
 }
 
 # Dictionary with the valid reducer keys to use in experiment configuration
@@ -138,7 +156,12 @@ estimator_cls = {
 # The key is the algorithm name and the value is the class to use.
 # Reducers must be a subclass of `librep.reducers.base.Transform` or implement
 # the same interface (scikit-learn compatible, fit/transform methods)
-reducers_cls = {"identity": Identity, "umap": UMAP}
+reducers_cls = {
+    "identity": Identity,
+    "umap": UMAP,
+    "WrapperTransform": WrapperEstimatorTransform,
+    "DebugReducer": DebugTransformEstimator,
+}
 
 # Dictionary with the valid transforms keys to use in experiment configuration
 # (under transform.transform key).
@@ -148,7 +171,8 @@ reducers_cls = {"identity": Identity, "umap": UMAP}
 transforms_cls = {
     "identity": Identity,
     "fft": FFT,
-    "spectrogram": Spectrogram
+    "WrapperTransform": WrapperEstimatorTransform,
+    "DebugTransform": DebugTransformEstimator
 }
 
 # Dictionary with the valid scalers keys to use in experiment configuration

@@ -74,10 +74,8 @@ class ExecutionConfig:
     version: str
     # Datasets to use to reducer
     reducer_dataset: Optional[List[str]]
-    reducer_validation_dataset: Optional[List[str]] = None
-    # Datasets to use to train the estimators
+
     train_dataset: List[str]
-    validation_dataset: Optional[List[str]] = None
     test_dataset: List[str]
     # List of transforms to apply
     transforms: Optional[List[TransformConfig]]
@@ -89,6 +87,10 @@ class ExecutionConfig:
     estimators: List[EstimatorConfig]
     # Extra
     extra: ExtraConfig
+    
+    reducer_validation_dataset: Optional[List[str]] = None
+    # Datasets to use to train the estimators
+    validation_dataset: Optional[List[str]] = None
 
 
 ################################################################################

@@ -26,8 +26,9 @@ from librep.base.transform import Transform
 from librep.estimators import SVC, KNeighborsClassifier, RandomForestClassifier
 from librep.transforms.fft import FFT
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from librep.estimators.simclr.torch.simclr_estimator import  Simclr_Estimator
 
-from transforms import Spectrogram
+#from transforms import Spectrogram
 
 # Third-party imports
 from umap import UMAP
@@ -131,6 +132,8 @@ estimator_cls = {
     "SVM": SVC,
     "KNN": KNeighborsClassifier,
     "RandomForest": RandomForestClassifier,
+    "SIMCLR":Simclr_Estimator,
+
 }
 
 # Dictionary with the valid reducer keys to use in experiment configuration
@@ -148,7 +151,7 @@ reducers_cls = {"identity": Identity, "umap": UMAP}
 transforms_cls = {
     "identity": Identity,
     "fft": FFT,
-    "spectrogram": Spectrogram
+   # "spectrogram": Spectrogram
 }
 
 # Dictionary with the valid scalers keys to use in experiment configuration

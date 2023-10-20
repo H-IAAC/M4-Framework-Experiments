@@ -9,7 +9,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 # Third-party imports
 from basic.config import *
 from basic.run_basic_experiment import run_basic_experiment
-from basic.helper import umap_simple_experiment, process_result, set_random_state
+from basic.helper import process_result
 
 
 def h_search_unit(
@@ -34,5 +34,23 @@ def h_search_unit(
         with open(f"{save_folder}/{item}.yaml", "w") as f:
             yaml.dump(experiment_result, f)
     # Return the score
-    score = process_result(experiment_result)[-1]['accuracy']
-    return {'score': score}
+    processed_result = process_result(experiment_result)
+    # Get the maximum accuracy between all the estimators
+    max_accuracy = processed_result[-1]['accuracy']
+    result_object = {'score': max_accuracy}
+    criteria = ['accuracy (mean)', 'accuracy (std)', 'f1-score macro (mean)', 'f1-score macro (std)', 'f1-score weighted (mean)', 'f1-score weighted (std)']
+    for result in processed_result[:-1]:
+        for criterion in criteria:
+            if criterion in result:
+                result_object[f'{result["estimator"]}-{criterion}'] = result[criterion]
+
+    # score = process_result(experiment_result)[-1]['accuracy']
+    
+    if 'num_params' in experiment_result['additional']:
+        result_object['num_params'] = experiment_result['additional']['num_params']
+        # num_params = experiment_result['additional']['num_params']
+    if 'num_trainable_params' in experiment_result['additional']:
+        result_object['num_trainable_params'] = experiment_result['additional']['num_trainable_params']
+        # num_trainable_params = experiment_result['additional']['num_trainable_params']
+    # return {'score': max_accuracy, 'num_params': num_params, 'num_trainable_params': num_trainable_params}
+    return result_object

@@ -19,6 +19,8 @@ import pandas as pd
 import ray
 from pathlib import Path
 import functools
+import sys
+import traceback
 
 
 class BestResultCallback(Callback):
@@ -26,6 +28,7 @@ class BestResultCallback(Callback):
     def __init__(self, experiment_full_path):
         self.experiment_full_path = experiment_full_path
         self.data = []
+        self.errors = []
         self.counter = 0
 
     def on_trial_result(self, iteration, trials, trial, result, **info):
@@ -37,10 +40,21 @@ class BestResultCallback(Callback):
         }
         self.data.append(new_row)
         self.counter += 1
-        if self.counter % 200 == 0:
+        if self.counter % 50 == 0:
             data_df = pd.DataFrame(self.data)
             data_df.to_csv(f"{self.experiment_full_path}/callback_data.csv", index=False)
-        # print(f"Got result: {result['score']}")
+        if 'error_message' in result:
+            self.errors.append(
+                {
+                    'trial_id': trial.trial_id,
+                    'config': result['config'],
+                    'error_type': result['error_type'],
+                    'error_message': result['error_message'],
+                    'error_traceback': result['error_traceback']
+                }
+            )
+            errors_df = pd.DataFrame(self.errors)
+            errors_df.to_csv(f"{self.experiment_full_path}/callback_errors.csv", index=False)
 
 class CustomStopper(Stopper):
     def __init__(
@@ -48,6 +62,7 @@ class CustomStopper(Stopper):
         metric: str,
         min: int = 1000,
         patience: int = 100,
+        experiment_full_path = ''
     ):
         self._metric = metric
         self._patience = patience
@@ -56,9 +71,15 @@ class CustomStopper(Stopper):
         self.best_found = 0
         self.counter = 0
         self.trial_ids = []
+        # print('CUSTOM STOPPER - init')
+        self.experiment_full_path = experiment_full_path
+        # print('CUSTOM STOPPER - experiment_full_path', self.experiment_full_path)
         # self.results = []
 
     def __call__(self, trial_id, result):
+        print(f"CUSTOM STOPPER - Trial ids length: {len(self.trial_ids)} patience: {self._patience}")
+        # if self.experiment_full_path != '':
+            # print(f"CUSTOM STOPPER - Saving results to {self.experiment_full_path}...")
         if trial_id not in self.trial_ids and result[self._metric] > 0:
             self.trial_ids.append(trial_id)
             self._iterations += 1
@@ -104,9 +125,11 @@ def my_objective_function(
             config_to_execute=config_to_execute
         )
     except Exception as e:
-        print(e)
+        print('EXCEPTION FOUND\n', e)
+        syserror = sys.exc_info()
         # result = {'score': random.uniform(-20, -10)}
-        result = {'score': -0.1}
+        result = {'score': -0.1, 'num_params': -1, 'num_trainable_params': -1, 'error_type': str(syserror[0]), 'error_message': str(syserror[1]), 'error_traceback': '\n'.join(traceback.format_tb(e.__traceback__))}
+        # print(result)
     session.report(result)
 
 
@@ -137,6 +160,8 @@ def hyperparameters_search(
     # ray.init(
     #     num_cpus=resources['cpu'],
     #     num_gpus=resources['gpu'])
+    # ray.init(runtime_env={"env_vars": {"PL_DISABLE_FORK": "1"}})
+
 
 
     save_folder = os.path.abspath(f'{experiment_full_path}/files')
@@ -174,7 +199,7 @@ def hyperparameters_search(
         run_config=air.RunConfig(
             name=str(experiment_full_path).split('/')[-1],
             callbacks=[BestResultCallback(experiment_full_path)],
-            stop=CustomStopper(metric="score", min=1000, patience=100)
+            stop=CustomStopper(metric="score", min=1000, patience=100, experiment_full_path=experiment_full_path)
             # stop=ExperimentPlateauStopper(metric="score", std=0.001, top=10, mode="max", patience=0)
         ),
         param_space=search_space

@@ -1,17 +1,20 @@
 estimators:
 -   algorithm: SIMCLR_full
     kwargs:
+     dataset: 'motionsense'
      n_components: 98
      batch_size_head: 256
      epochs_head: 300
      temperature_head: 0.5
      input_shape: [60, 6] 
      batch_size_head: 256
-     transform_funcs: ['noise_vectorized', 'channel_shuffle_vectorized', 'amplify_attenuate']
+     transform_funcs: [1]
      temperature_head: 0.5
      epochs_head: 300
-     save_model: false
-     verbose: 0
+     patience: 10
+     min_delta: 0.001
+     save_model: true
+     verbose: 1
      total_epochs: 50
      batch_size: 32
      lr: 0.001

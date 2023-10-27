@@ -1,0 +1,71 @@
+estimators:
+-   algorithm: RandomForest
+    kwargs:
+        n_estimators: 100
+    name: randomforest-100
+    num_runs: 10
+-   algorithm: KNN
+    kwargs:
+        n_neighbors: 5
+    name: KNN-5
+    num_runs: 1
+-   algorithm: SVM
+    kwargs:
+        C: 1.0
+        kernel: rbf
+    name: SVM-rbf-C1.0
+    num_runs: 1
+extra:
+    in_use_features:
+    - accel-x
+    - accel-y
+    - accel-z
+    - gyro-x
+    - gyro-y
+    - gyro-z
+    reduce_on: all
+    save_reducer: false
+    scale_on: train
+reducer:
+    algorithm: SimCLR_linear
+    kwargs:
+     dataset: 'uci'
+     input_shape: [60, 6]
+     n_components: 98      
+     batch_size_head: 256
+     transform_funcs: [1,2,3]
+     temperature_head: 0.5
+     epochs_head: 300
+     patience: 10
+     min_delta: 0.001
+     device: 'cuda'
+     save_model: true
+     verbose: 0
+     total_epochs: 50
+     batch_size: 32
+     lr: 0.001
+
+    name: SIMCLR_linear
+    use_y: true
+
+reducer_dataset:
+- uci.standartized_balanced[train]
+test_dataset:
+- uci.standartized_balanced[validation]
+train_dataset:
+- uci.standartized_balanced[train]
+
+
+
+version: '1.0'
+
+
+
+
+
+
+
+
+
+
+

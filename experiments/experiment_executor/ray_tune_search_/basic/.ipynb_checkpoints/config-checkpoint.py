@@ -14,6 +14,9 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from librep.estimators.simclr.torch.simclr_linear_estimator import  Simclr_Linear_Estimator
 from librep.estimators.simclr.torch.simclr_full_estimator import Simclr_Full_Estimator
 from librep.transforms.simclr import SimCLR
+from librep.transforms.simclr_linear import SimCLR_linear
+from librep.transforms.simclr_full import SimCLR_full
+
 
 
 # Third-party imports
@@ -178,7 +181,9 @@ reducers_cls = {
     "convtae1d": ConvTAETransform,
     "lstm": LSTMTrainer,
     "convaelstm": ConvAELSTMTransform,
-    "SimCLR":SimCLR
+    "SimCLR":SimCLR,
+    "SimCLR_linear":SimCLR_linear,
+    "SimCLR_full":SimCLR_full
 }
 # Dictionary with the valid transforms keys to use in experiment configuration
 # (under transform.transform key).

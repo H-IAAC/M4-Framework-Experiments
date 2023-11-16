@@ -1,0 +1,43 @@
+trial_id,config,error_type,error_message,error_traceback
+c64bec5e,"{'temperature_head': 0.1, 'latent_dim': 135, 'batch_size': 266, 'transform_funcs': (4,)}",<class 'torch.cuda.OutOfMemoryError'>,"CUDA out of memory. Tried to allocate 66.00 MiB. GPU 0 has a total capacty of 23.69 GiB of which 64.25 MiB is free. Process 3320861 has 564.00 MiB memory in use. Process 4021085 has 922.00 MiB memory in use. Process 4021083 has 1.46 GiB memory in use. Process 4021089 has 750.00 MiB memory in use. Process 4021086 has 806.00 MiB memory in use. Process 4021090 has 1.07 GiB memory in use. Process 4024298 has 1.01 GiB memory in use. Process 4024301 has 918.00 MiB memory in use. Process 4024295 has 748.00 MiB memory in use. Process 4024304 has 982.00 MiB memory in use. Process 4024297 has 996.00 MiB memory in use. Process 4024686 has 1.02 GiB memory in use. Process 4024692 has 980.00 MiB memory in use. Process 4024685 has 640.00 MiB memory in use. Process 4024689 has 940.00 MiB memory in use. Process 4024695 has 952.00 MiB memory in use. Process 4025074 has 922.00 MiB memory in use. Process 4025086 has 932.00 MiB memory in use. Process 4025077 has 746.00 MiB memory in use. Process 4025080 has 1.30 GiB memory in use. Process 4025083 has 1002.00 MiB memory in use. Process 4025464 has 468.00 MiB memory in use. Process 4025467 has 804.00 MiB memory in use. Process 4025510 has 1004.00 MiB memory in use. Process 4025470 has 848.00 MiB memory in use. Process 4025473 has 1.14 GiB memory in use. Of the allocated memory 113.92 MiB is allocated by PyTorch, and 16.08 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF","  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/experiment_executor/ray_tune_search_/hyperparameters_search.py"", line 119, in my_objective_function
+    result = h_search_unit(
+
+  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/experiment_executor/ray_tune_search_/h_search_unit.py"", line 23, in h_search_unit
+    experiment_result = run_basic_experiment(
+
+  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/experiment_executor/ray_tune_search_/basic/run_basic_experiment.py"", line 151, in run_basic_experiment
+    datasets = do_reduce(
+
+  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/experiment_executor/ray_tune_search_/basic/do_reduce.py"", line 144, in do_reduce
+    {dset_name: transformer(datasets[dset_name]) for dset_name in apply_only_in}
+
+  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/experiment_executor/ray_tune_search_/basic/do_reduce.py"", line 144, in <dictcomp>
+    {dset_name: transformer(datasets[dset_name]) for dset_name in apply_only_in}
+
+  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/.local/lib/python3.10/site-packages/librep/datasets/multimodal/transformer.py"", line 523, in __call__
+    new_X = window_transform.the_transform.transform(X=X)
+
+  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/.local/lib/python3.10/site-packages/librep/transforms/simcrl_full.py"", line 57, in transform
+    embeddings = intermediate_model(test_data).cpu().detach().numpy()
+
+  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/.local/lib/python3.10/site-packages/torch/nn/modules/module.py"", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+
+  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/.local/lib/python3.10/site-packages/torch/nn/modules/module.py"", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+
+  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/.local/lib/python3.10/site-packages/librep/estimators/simcrl/torch/models/model_base.py"", line 30, in forward
+    x = self.conv3(x)
+
+  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/.local/lib/python3.10/site-packages/torch/nn/modules/module.py"", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+
+  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/.local/lib/python3.10/site-packages/torch/nn/modules/module.py"", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+
+  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/.local/lib/python3.10/site-packages/torch/nn/modules/conv.py"", line 310, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+
+  File ""/home/amparo/unicamp_hyper3/M4-Framework-Experiments/experiments/.local/lib/python3.10/site-packages/torch/nn/modules/conv.py"", line 306, in _conv_forward
+    return F.conv1d(input, weight, bias, self.stride,
+"

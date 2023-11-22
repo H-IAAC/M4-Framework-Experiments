@@ -1,0 +1,4 @@
+python hsearch_main.py --data ../data/ --cpu 0.2 --gpu 0.2 --max_concurrent 20 --experiment simclr_all/all_transformations/simclr/tem_transf/realworld_thigh/simclr_realworld_thigh_P100 & 
+python hsearch_main.py --data ../data/ --cpu 0.2 --gpu 0.2 --max_concurrent 20 --experiment simclr_all/all_transformations/simclr/tem_transf/realworld_thigh/simclr_realworld_thigh_P200 & 
+python hsearch_main.py --data ../data/ --cpu 0.2 --gpu 0.2 --max_concurrent 20 --experiment simclr_all/all_transformations/simclr/tem_transf/realworld_thigh/simclr_realworld_thigh_P25 & 
+python hsearch_main.py --data ../data/ --cpu 0.2 --gpu 0.2 --max_concurrent 20 --experiment simclr_all/all_transformations/simclr/tem_transf/realworld_thigh/simclr_realworld_thigh_P75

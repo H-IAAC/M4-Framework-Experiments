@@ -26,8 +26,13 @@ from librep.base.transform import Transform
 from librep.estimators import SVC, KNeighborsClassifier, RandomForestClassifier
 from librep.transforms.fft import FFT
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from librep.estimators.simclr.torch.simclr_linear_estimator import  Simclr_Linear_Estimator
+from librep.estimators.simclr.torch.simclr_full_estimator import Simclr_Full_Estimator
+from librep.transforms.simclr import SimCLR
+from librep.transforms.simclr_linear import SimCLR_linear
+from librep.transforms.simclr_full import SimCLR_full
 
-from transforms import Spectrogram
+#from transforms import Spectrogram
 
 # Third-party imports
 from umap import UMAP
@@ -138,7 +143,12 @@ estimator_cls = {
 # The key is the algorithm name and the value is the class to use.
 # Reducers must be a subclass of `librep.reducers.base.Transform` or implement
 # the same interface (scikit-learn compatible, fit/transform methods)
-reducers_cls = {"identity": Identity, "umap": UMAP}
+reducers_cls = {"identity": Identity, 
+                "umap": UMAP,
+                "SimCLR":SimCLR,
+                "SimCLR_linear":SimCLR_linear,
+                "SimCLR_full":SimCLR_full
+               }
 
 # Dictionary with the valid transforms keys to use in experiment configuration
 # (under transform.transform key).
@@ -148,7 +158,7 @@ reducers_cls = {"identity": Identity, "umap": UMAP}
 transforms_cls = {
     "identity": Identity,
     "fft": FFT,
-    "spectrogram": Spectrogram
+ #   "spectrogram": Spectrogram
 }
 
 # Dictionary with the valid scalers keys to use in experiment configuration

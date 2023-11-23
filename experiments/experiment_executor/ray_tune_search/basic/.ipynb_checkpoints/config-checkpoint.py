@@ -21,10 +21,10 @@ from librep.transforms.simclr_full import SimCLR_full
 
 # Third-party imports
 from umap import UMAP
-from librep.transforms.dimal import DIMALDimensionalityReduction
-from librep.transforms.topo_ae import ConvTAETransform
-from librep.transforms.lstm import LSTMTrainer
-from librep.transforms.convaelstm import ConvAELSTMTransform
+#from librep.transforms.dimal import DIMALDimensionalityReduction
+#from librep.transforms.topo_ae import ConvTAETransform
+#from librep.transforms.lstm import LSTMTrainer
+#from librep.transforms.convaelstm import ConvAELSTMTransform
 
 ################################################################################
 # Configuration classes
@@ -177,10 +177,10 @@ reducers_cls = {
     "umap": UMAP,
     "WrapperTransform": WrapperEstimatorTransform,
     "DebugReducer": DebugTransformEstimator,
-    "dimal": DIMALDimensionalityReduction,
-    "convtae1d": ConvTAETransform,
-    "lstm": LSTMTrainer,
-    "convaelstm": ConvAELSTMTransform,
+#    "dimal": DIMALDimensionalityReduction,
+#    "convtae1d": ConvTAETransform,
+#    "lstm": LSTMTrainer,
+#    "convaelstm": ConvAELSTMTransform,
     "SimCLR":SimCLR,
     "SimCLR_linear":SimCLR_linear,
     "SimCLR_full":SimCLR_full
